@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { serviceTabs } from '../../data/rideshare'
 import type { ActivePanel, FlowStep, DestinationSuggestion } from '../../types/rideshare'
 
 const props = defineProps<{
+  activeService: import('../../types/rideshare').AppService
   activePanel: ActivePanel
   step: FlowStep
   destinationTitle?: string
   trackingProgress: number
+  headerLabel?: string
+  headerRight?: 'avatar' | 'heart' | 'close'
+  headerForceBack?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -17,8 +22,11 @@ const emit = defineEmits<{
   choosePoi: [suggestion: DestinationSuggestion]
 }>()
 
-const showRoute = computed(() => props.step !== 'home')
-const showDriver = computed(() => props.step === 'tracking')
+const activeServiceMeta = computed(() => serviceTabs.find((service) => service.id === props.activeService) ?? serviceTabs[0])
+const headerUsesMenu = computed(() => props.activePanel === 'ride' && (props.activeService !== 'ride' || props.step === 'home'))
+const showRoute = computed(() => props.activeService === 'ride' && props.step !== 'home')
+const showDriver = computed(() => props.activeService === 'ride' && props.step === 'tracking')
+const showPoiMarkers = computed(() => props.activeService === 'ride' && props.activePanel === 'ride' && props.step === 'home')
 const driverOffset = computed(() => `${12 + props.trackingProgress * 58}%`)
 const driverTop = computed(() => `${70 - props.trackingProgress * 36}%`)
 
@@ -113,16 +121,22 @@ onMounted(() => {
       <button
         class="icon-button"
         type="button"
-        :aria-label="step === 'home' && activePanel === 'ride' ? 'Open menu' : 'Back'"
-        @click="step === 'home' && activePanel === 'ride' ? $emit('menu') : $emit('back')"
+        :aria-label="(props.headerForceBack || !headerUsesMenu) ? 'Back' : 'Open menu'"
+        @click="(props.headerForceBack || !headerUsesMenu) ? $emit('back') : $emit('menu')"
       >
-        <UIcon v-if="step === 'home' && activePanel === 'ride'" name="i-material-symbols-menu-rounded" class="header-icon" aria-hidden="true" />
+        <UIcon v-if="!props.headerForceBack && headerUsesMenu" name="i-material-symbols-menu-rounded" class="header-icon" aria-hidden="true" />
         <UIcon v-else name="i-material-symbols-arrow-back-rounded" class="header-icon" aria-hidden="true" />
       </button>
 
-      <div class="brand-pill">Ride Share</div>
+      <div class="brand-pill">{{ props.headerLabel ?? activeServiceMeta.headerLabel }}</div>
 
-      <button class="avatar-badge" type="button" aria-label="Open profile" @click="$emit('profile')">
+      <button v-if="(props.headerRight ?? 'avatar') === 'heart'" class="icon-button" type="button" aria-label="Save">
+        <UIcon name="i-material-symbols-favorite-outline-rounded" class="header-icon" aria-hidden="true" />
+      </button>
+      <button v-else-if="(props.headerRight ?? 'avatar') === 'close'" class="icon-button" type="button" aria-label="Close" @click="$emit('back')">
+        <UIcon name="i-material-symbols-close-rounded" class="header-icon" aria-hidden="true" />
+      </button>
+      <button v-else class="avatar-badge" type="button" aria-label="Open profile" @click="$emit('profile')">
         <span class="avatar-head" />
         <span class="avatar-body" />
       </button>
@@ -173,7 +187,7 @@ onMounted(() => {
 
       <!-- Clickable POI markers -->
       <button
-        v-for="poi in pois"
+        v-for="poi in showPoiMarkers ? pois : []"
         :key="poi.id"
         class="poi-marker"
         :style="{ left: poi.x + '%', top: poi.y + '%' }"
@@ -185,7 +199,7 @@ onMounted(() => {
         <span class="poi-label">{{ poi.label }}</span>
       </button>
 
-      <div class="pickup-pin" aria-hidden="true" />
+      <div v-if="activeService === 'ride'" class="pickup-pin" aria-hidden="true" />
 
       <template v-if="showRoute">
         <div class="route-dot route-dot-a" aria-hidden="true" />
@@ -467,7 +481,7 @@ onMounted(() => {
 
 .map-header-row {
   position: absolute;
-  top: 18px;
+  top: 16px;
   left: 18px;
   right: 18px;
   display: flex;
@@ -481,11 +495,11 @@ onMounted(() => {
 .avatar-badge {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border: 0;
-  border-radius: 14px;
-  background: #201f1f;
+  border-radius: 16px;
+  background: rgba(32, 31, 31, 0.94);
   color: #f6f8f4;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
 }
@@ -508,14 +522,17 @@ onMounted(() => {
 }
 
 .brand-pill {
-  padding: 9px 16px;
+  min-width: 96px;
+  padding: 11px 18px 10px;
   border-radius: 999px;
-  background: #201f1f;
-  color: #3b82f6;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  background: rgba(50, 50, 50, 0.94);
+  color: #f7f6f3;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
 }
 
 .avatar-badge {

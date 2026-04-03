@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { DestinationSuggestion, PaymentMethod, SavedPlace } from '../../types/rideshare'
+import RideshareServiceTabs from './ServiceTabs.vue'
+import type { AppService, DestinationSuggestion, PaymentMethod, SavedPlace } from '../../types/rideshare'
 
 const props = defineProps<{
+  activeService: AppService
   destinationQuery: string
   minimized?: boolean
+  riderName: string
   suggestions: DestinationSuggestion[]
   savedPlaces: SavedPlace[]
   paymentMethod: PaymentMethod
@@ -15,9 +18,11 @@ const lastTripSuggestion = computed(() =>
 )
 
 const visibleSavedPlaces = computed(() => props.savedPlaces.slice(0, 3))
+const firstName = computed(() => props.riderName.split(' ')[0] ?? props.riderName)
 
 defineEmits<{
   openAddPlaces: []
+  switchService: [service: AppService]
   updateQuery: [value: string]
   chooseSuggestion: [suggestion: DestinationSuggestion]
   chooseSavedPlace: [place: SavedPlace]
@@ -28,11 +33,11 @@ defineEmits<{
 
 <template>
   <section class="sheet sheet-home" :class="{ 'sheet-minimized': minimized }">
-    <div class="sheet-handle" aria-hidden="true" />
+    <RideshareServiceTabs :active-service="activeService" @select="$emit('switchService', $event)" />
 
     <header v-if="!minimized" class="sheet-copy">
-      <h2>Choose a destination</h2>
-      <p>Search for a place or pick from your recent stops</p>
+      <h2>Where to, {{ firstName }}?</h2>
+      <p>Fast pickups, saved places, and your preferred payment are ready.</p>
     </header>
 
     <div class="search-card" @click="minimized ? $emit('expand') : undefined">
@@ -59,56 +64,57 @@ defineEmits<{
     </div>
 
     <template v-if="!minimized">
-    <div class="saved-row">
-      <button
-        v-for="place in visibleSavedPlaces"
-        :key="place.id"
-        class="saved-chip"
-        type="button"
-        @click="$emit('chooseSavedPlace', place)"
-      >
-        <span class="saved-chip__icon" aria-hidden="true">
-          <UIcon v-if="place.icon === 'home'" name="i-material-symbols-home-outline-rounded" class="app-icon" />
-          <UIcon v-else-if="place.icon === 'briefcase'" name="i-material-symbols-business-center-outline-rounded" class="app-icon" />
-          <UIcon v-else name="i-material-symbols-fitness-center-rounded" class="app-icon" />
-        </span>
-        <span class="saved-chip__title">{{ place.label }}</span>
-      </button>
 
-      <button class="saved-chip saved-chip-add" type="button" @click="$emit('openAddPlaces')">
-        <span class="saved-chip__icon" aria-hidden="true">
-          <UIcon name="i-material-symbols-add-location-alt-rounded" class="app-icon" />
-        </span>
-        <span class="saved-chip__title">Add</span>
-      </button>
-    </div>
+      <div class="saved-row">
+        <button
+          v-for="place in visibleSavedPlaces"
+          :key="place.id"
+          class="saved-chip"
+          type="button"
+          @click="$emit('chooseSavedPlace', place)"
+        >
+          <span class="saved-chip__icon" aria-hidden="true">
+            <UIcon v-if="place.icon === 'home'" name="i-material-symbols-home-outline-rounded" class="app-icon" />
+            <UIcon v-else-if="place.icon === 'briefcase'" name="i-material-symbols-business-center-outline-rounded" class="app-icon" />
+            <UIcon v-else name="i-material-symbols-fitness-center-rounded" class="app-icon" />
+          </span>
+          <span class="saved-chip__title">{{ place.label }}</span>
+        </button>
 
-    <div class="section-head">
-      <span>Last trip</span>
-    </div>
-
-    <button
-      v-if="lastTripSuggestion"
-      class="suggestion-card suggestion-card-featured last-trip-card"
-      type="button"
-      @click="$emit('chooseSuggestion', lastTripSuggestion)"
-    >
-      <span class="suggestion-icon" aria-hidden="true">
-        <UIcon name="i-material-symbols-history-rounded" class="app-icon last-trip-icon" />
-      </span>
-
-      <div class="suggestion-copy">
-        <strong>{{ lastTripSuggestion.title }}</strong>
-        <span>{{ lastTripSuggestion.subtitle }}</span>
+        <button class="saved-chip saved-chip-add" type="button" @click="$emit('openAddPlaces')">
+          <span class="saved-chip__icon" aria-hidden="true">
+            <UIcon name="i-material-symbols-add-location-alt-rounded" class="app-icon" />
+          </span>
+          <span class="saved-chip__title">Add</span>
+        </button>
       </div>
 
-      <UIcon name="i-material-symbols-chevron-right-rounded" class="app-icon suggestion-arrow" aria-hidden="true" />
-    </button>
+      <div class="section-head">
+        <span>Last trip</span>
+      </div>
 
-    <button class="cta" type="button" @click="$emit('continue')">
-      <span>Explore ride options</span>
-      <UIcon name="i-material-symbols-arrow-forward-rounded" class="app-icon cta-icon" aria-hidden="true" />
-    </button>
+      <button
+        v-if="lastTripSuggestion"
+        class="suggestion-card suggestion-card-featured last-trip-card"
+        type="button"
+        @click="$emit('chooseSuggestion', lastTripSuggestion)"
+      >
+        <span class="suggestion-icon" aria-hidden="true">
+          <UIcon name="i-material-symbols-history-rounded" class="app-icon last-trip-icon" />
+        </span>
+
+        <div class="suggestion-copy">
+          <strong>{{ lastTripSuggestion.title }}</strong>
+          <span>{{ lastTripSuggestion.subtitle }}</span>
+        </div>
+
+        <UIcon name="i-material-symbols-chevron-right-rounded" class="app-icon suggestion-arrow" aria-hidden="true" />
+      </button>
+
+      <button class="cta" type="button" @click="$emit('continue')">
+        <span>Explore ride options</span>
+        <UIcon name="i-material-symbols-arrow-forward-rounded" class="app-icon cta-icon" aria-hidden="true" />
+      </button>
     </template>
   </section>
 </template>
@@ -116,49 +122,52 @@ defineEmits<{
 <style scoped>
 .sheet {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   border-radius: 30px;
   background: #171717;
   color: #f3f1ec;
   box-shadow: 0 24px 44px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(16px);
+  overflow: hidden;
 }
 
 .sheet-home {
-  padding: 18px 16px 16px;
+  padding: 12px 16px 16px;
   transition: padding 250ms ease;
 }
 
 .sheet-minimized {
-  padding: 10px 12px;
+  height: auto;
+  gap: 10px;
+  padding: 12px;
   border-radius: 22px;
 }
 
-.sheet-minimized .sheet-handle {
+.sheet-minimized :deep(.service-tabs) {
+  gap: 8px;
+}
+
+.sheet-minimized :deep(.service-tabs-handle) {
   display: none;
 }
 
-.sheet-handle {
-  width: 42px;
-  height: 5px;
-  margin: 2px auto 16px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .sheet-copy {
-  margin: 4px 0 14px;
+  margin: 0;
 }
 
 .sheet-copy h2 {
   margin: 0;
   font-family: 'Inter', sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.75rem;
+  line-height: 1.02;
 }
 
 .sheet-copy p {
-  margin: 3px 0 0;
-  color: rgba(255, 255, 255, 0.42);
-  font-size: 0.75rem;
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.82rem;
 }
 
 .search-card {
@@ -170,10 +179,10 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 60px;
+  min-height: 64px;
   padding: 0 16px;
-  border-radius: 18px;
-  background: #1f1f1f;
+  border-radius: 20px;
+  background: #242424;
   transition:
     background-color 200ms ease,
     box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -181,7 +190,7 @@ defineEmits<{
 }
 
 .search-input-wrap:focus-within {
-  background: #252525;
+  background: #2a2a2a;
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.22), 0 16px 30px rgba(0, 0, 0, 0.18);
 }
 
@@ -246,11 +255,68 @@ defineEmits<{
   color: rgba(255, 255, 255, 0.66);
 }
 
+.summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: #242424;
+}
+
+.summary-card small {
+  display: block;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.summary-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1rem;
+}
+
+.payment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #8ec1ff;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.section-link {
+  border: 0;
+  background: none;
+  color: #ffffff;
+  font: inherit;
+  text-transform: uppercase;
+}
+
 .saved-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 12px;
 }
 
 .saved-chip {
@@ -305,32 +371,9 @@ defineEmits<{
   box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.18);
 }
 
-@media (max-width: 420px) {
-  .saved-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.section-head-secondary {
-  margin-top: 12px;
-}
-
 .suggestion-list {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
 }
 
 .suggestion-card {
@@ -378,26 +421,7 @@ defineEmits<{
   flex-shrink: 0;
 }
 
-.last-trip-card .suggestion-icon svg {
-  width: 24px;
-  height: 24px;
-}
-
 .last-trip-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.suggestion-arrow {
-  color: rgba(255, 255, 255, 0.26);
-  width: 22px;
-  height: 22px;
-  margin-left: auto;
-  justify-self: end;
-  align-self: center;
-}
-
-.cta-icon {
   width: 24px;
   height: 24px;
 }
@@ -409,25 +433,26 @@ defineEmits<{
   min-width: 0;
 }
 
-.suggestion-card strong {
-  display: block;
-  font-family: inherit;
+.suggestion-copy strong {
   font-size: 0.94rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
 }
 
-.suggestion-card span {
+.suggestion-copy span {
   color: rgba(255, 255, 255, 0.5);
   font-size: 0.78rem;
 }
 
-.last-trip-card .suggestion-copy span {
-  line-height: 1.2;
+.suggestion-arrow {
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  align-self: center;
+  color: rgba(255, 255, 255, 0.26);
 }
 
-.suggestion-meta {
-  text-align: right;
+.cta-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .cta {
@@ -436,8 +461,8 @@ defineEmits<{
   justify-content: center;
   gap: 10px;
   width: 100%;
-  margin-top: 12px;
   min-height: 64px;
+  margin-top: 12px;
   padding: 16px 20px;
   border: 0;
   border-radius: 20px;
@@ -466,12 +491,7 @@ defineEmits<{
 
 @media (max-width: 420px) {
   .saved-row {
-    grid-template-columns: 1fr;
-  }
-
-  .section-head {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

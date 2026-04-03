@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { AppService } from '../../types/rideshare'
 import RideshareConfirmingPanel from '../../components/rideshare/ConfirmingPanel.vue'
+import RideshareEatsPanel from '../../components/rideshare/EatsPanel.vue'
+import RideshareEatsRestaurantPanel from '../../components/rideshare/EatsRestaurantPanel.vue'
+import RideshareEatsOrderPanel from '../../components/rideshare/EatsOrderPanel.vue'
 import RidesharePaymentPanel from '../../components/rideshare/PaymentPanel.vue'
 import RidesharePerksPanel from '../../components/rideshare/PerksPanel.vue'
 import RideshareHomePanel from '../../components/rideshare/HomePanel.vue'
 import RideshareAddPlacesPanel from '../../components/rideshare/AddPlacesPanel.vue'
+import RideshareMartPanel from '../../components/rideshare/MartPanel.vue'
 import RideshareMenuPanel from '../../components/rideshare/MenuPanel.vue'
 import RideshareMyRidesPanel from '../../components/rideshare/MyRidesPanel.vue'
 import RideshareProfilePanel from '../../components/rideshare/ProfilePanel.vue'
@@ -12,17 +17,30 @@ import RideshareRidePreferencesPanel from '../../components/rideshare/RidePrefer
 import RideshareRideOptionsPanel from '../../components/rideshare/RideOptionsPanel.vue'
 import RideshareSafetyToolkitPanel from '../../components/rideshare/SafetyToolkitPanel.vue'
 import RideshareScreenScaffold from '../../components/rideshare/ScreenScaffold.vue'
+import RideshareSendPanel from '../../components/rideshare/SendPanel.vue'
 import RideshareTrackingPanel from '../../components/rideshare/TrackingPanel.vue'
+import { serviceAddresses } from '../../data/rideshare'
 import { useRideShareFlow } from '../../composables/useRideShareFlow'
 
 const {
+  activeService,
   activePanel,
+  cartCount,
+  cartItems,
+  cartTotal,
   currentCheckpoint,
+  deliveryServices,
   destinationQuery,
   driverProfile,
+  eatsCategories,
+  eatsMenuItems,
+  eatsStep,
   filteredSuggestions,
+  martCategories,
+  martFeaturedStores,
   paymentMethods,
   perks,
+  recentFoodOrders,
   remainingMinutes,
   ridePreferences,
   rideOptions,
@@ -31,15 +49,20 @@ const {
   selectedDestination,
   selectedPaymentId,
   selectedPaymentMethod,
+  selectedRestaurant,
   selectedRide,
   selectedRideId,
+  sendPackageTypes,
   step,
   trackingProgress,
+  trendingRestaurants,
   tripHistory,
   safetyToolkit,
   activateCommutePack,
+  addToCart,
   chooseSavedPlace,
   chooseSuggestion,
+  closeEatsSubpanel,
   closePlaces,
   closeMenu,
   closeMenuSubpanel,
@@ -48,19 +71,24 @@ const {
   confirmRide,
   addSavedPlace,
   openAddPlaces,
+  openEatsOrder,
   openMenu,
   openPerks,
   openMyRides,
   openPayments,
   openPreferences,
   openProfile,
+  openRestaurant,
   openSafetyToolkit,
   proceedToRideOptions,
+  removeFromCart,
   resetTrip,
   savePaymentMethod,
   selectPaymentMethod,
   selectRide,
   setDestinationQuery,
+  switchService,
+  updateCartQuantity,
   updateRidePreferences,
   updateSafetyToolkit,
 } = useRideShareFlow()
@@ -68,6 +96,10 @@ const {
 const panelTransitionName = computed(() => {
   if (activePanel.value === 'menu' || activePanel.value === 'preferences' || activePanel.value === 'safety' || activePanel.value === 'perks' || activePanel.value === 'profile' || activePanel.value === 'my-rides' || activePanel.value === 'places' || activePanel.value === 'payments') {
     return 'panel-fade'
+  }
+
+  if (activeService.value !== 'ride') {
+    return 'panel-sheet'
   }
 
   if (step.value === 'tracking') {
@@ -82,10 +114,42 @@ const panelTransitionName = computed(() => {
 })
 
 const panelKey = computed(() => {
-  return activePanel.value === 'ride' ? step.value : activePanel.value
+  if (activePanel.value === 'ride' && activeService.value === 'eats') {
+    return `eats-${eatsStep.value}`
+  }
+  return activePanel.value === 'ride'
+    ? `${activeService.value}-${activeService.value === 'ride' ? step.value : 'home'}`
+    : activePanel.value
 })
 
+const martAddress = computed(() => serviceAddresses.mart)
+
+const eatsHeaderLabel = computed(() => {
+  if (activeService.value !== 'eats') return undefined
+  if (eatsStep.value === 'restaurant') return selectedRestaurant.value?.name?.toUpperCase() ?? 'RESTAURANT'
+  if (eatsStep.value === 'order') return 'YOUR ORDER'
+  return undefined
+})
+
+const eatsHeaderRight = computed((): 'avatar' | 'heart' | 'close' | undefined => {
+  if (activeService.value !== 'eats') return undefined
+  if (eatsStep.value === 'restaurant') return 'heart'
+  if (eatsStep.value === 'order') return 'close'
+  return undefined
+})
+
+const eatsForceBack = computed(() => activeService.value === 'eats' && eatsStep.value !== 'home')
+
+function handleServiceSwitch(service: AppService) {
+  homeMinimized.value = false
+  switchService(service)
+}
+
 function handleBack() {
+  if (activeService.value === 'eats' && eatsStep.value !== 'home') {
+    closeEatsSubpanel()
+    return
+  }
   if (activePanel.value === 'profile') {
     closeProfile()
     return
@@ -134,7 +198,7 @@ function handleBack() {
 const homeMinimized = ref(false)
 
 function handleMapTap() {
-  if (step.value === 'home' && activePanel.value === 'ride') {
+  if (activeService.value === 'ride' && step.value === 'home' && activePanel.value === 'ride') {
     homeMinimized.value = true
   }
 }
@@ -146,8 +210,12 @@ function expandHome() {
 
 <template>
   <RideshareScreenScaffold
+    :active-service="activeService"
     :active-panel="activePanel"
     :destination-title="selectedDestination?.title"
+    :header-force-back="eatsForceBack"
+    :header-label="eatsHeaderLabel"
+    :header-right="eatsHeaderRight"
     :step="step"
     :tracking-progress="trackingProgress"
     @back="handleBack"
@@ -227,14 +295,13 @@ function expandHome() {
         />
       </section>
 
-      <section v-else-if="step === 'home'" :key="panelKey" class="panel-wrap">
-        <button class="locate-btn" type="button" aria-label="Center map">
-          <UIcon name="i-material-symbols-near-me-rounded" class="locate-icon" aria-hidden="true" />
-        </button>
+      <section v-else-if="activeService === 'ride' && step === 'home'" :key="panelKey" class="panel-wrap panel-wrap-home">
         <RideshareHomePanel
+          :active-service="activeService"
           :destination-query="destinationQuery"
           :minimized="homeMinimized"
           :payment-method="selectedPaymentMethod"
+          :rider-name="riderProfile.name"
           :saved-places="savedPlaces"
           :suggestions="filteredSuggestions"
           @choose-saved-place="chooseSavedPlace"
@@ -242,11 +309,68 @@ function expandHome() {
           @continue="proceedToRideOptions"
           @expand="expandHome"
           @open-add-places="openAddPlaces"
+          @switch-service="handleServiceSwitch"
           @update-query="setDestinationQuery"
         />
       </section>
 
-      <section v-else-if="step === 'rides'" :key="panelKey" class="panel-wrap">
+      <section v-else-if="activeService === 'eats' && eatsStep === 'home'" :key="panelKey" class="panel-wrap panel-wrap-service">
+        <RideshareEatsPanel
+          :active-service="activeService"
+          :categories="eatsCategories"
+          :recent-orders="recentFoodOrders"
+          :rider-name="riderProfile.name"
+          :trending-restaurants="trendingRestaurants"
+          @open-restaurant="openRestaurant"
+          @switch-service="handleServiceSwitch"
+        />
+      </section>
+
+      <section v-else-if="activeService === 'eats' && eatsStep === 'restaurant'" :key="panelKey" class="panel-wrap panel-wrap-service panel-wrap-service-bottom">
+        <RideshareEatsRestaurantPanel
+          :cart-count="cartCount"
+          :cart-items="cartItems"
+          :cart-total="cartTotal"
+          :menu-items="eatsMenuItems"
+          :restaurant="selectedRestaurant"
+          @add-to-cart="addToCart"
+          @view-order="openEatsOrder"
+        />
+      </section>
+
+      <section v-else-if="activeService === 'eats' && eatsStep === 'order'" :key="panelKey" class="panel-wrap panel-wrap-service panel-wrap-service-bottom">
+        <RideshareEatsOrderPanel
+          :cart-items="cartItems"
+          :cart-total="cartTotal"
+          :menu-items="eatsMenuItems"
+          :restaurant="selectedRestaurant"
+          @close="closeEatsSubpanel"
+          @remove="removeFromCart"
+          @update="updateCartQuantity"
+        />
+      </section>
+
+      <section v-else-if="activeService === 'send'" :key="panelKey" class="panel-wrap panel-wrap-service">
+        <RideshareSendPanel
+          :active-service="activeService"
+          :delivery-services="deliveryServices"
+          :package-types="sendPackageTypes"
+          :rider-name="riderProfile.name"
+          @switch-service="handleServiceSwitch"
+        />
+      </section>
+
+      <section v-else-if="activeService === 'mart'" :key="panelKey" class="panel-wrap panel-wrap-service">
+        <RideshareMartPanel
+          :active-service="activeService"
+          :address="martAddress"
+          :categories="martCategories"
+          :featured-stores="martFeaturedStores"
+          @switch-service="handleServiceSwitch"
+        />
+      </section>
+
+      <section v-else-if="activeService === 'ride' && step === 'rides'" :key="panelKey" class="panel-wrap">
         <button class="locate-btn" type="button" aria-label="Center map">
           <UIcon name="i-material-symbols-near-me-rounded" class="locate-icon" aria-hidden="true" />
         </button>
@@ -261,7 +385,7 @@ function expandHome() {
         />
       </section>
 
-      <section v-else-if="step === 'confirming'" :key="panelKey" class="panel-wrap">
+      <section v-else-if="activeService === 'ride' && step === 'confirming'" :key="panelKey" class="panel-wrap">
         <button class="locate-btn" type="button" aria-label="Center map">
           <UIcon name="i-material-symbols-near-me-rounded" class="locate-icon" aria-hidden="true" />
         </button>
@@ -305,6 +429,22 @@ function expandHome() {
 .panel-wrap-profile {
   top: 72px;
   bottom: 16px;
+  justify-content: flex-end;
+}
+
+.panel-wrap-service {
+  top: 76px;
+  bottom: 16px;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.panel-wrap-service-bottom {
+  justify-content: flex-end;
+}
+
+.panel-wrap-home {
+  align-items: stretch;
   justify-content: flex-end;
 }
 

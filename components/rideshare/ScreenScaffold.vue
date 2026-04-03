@@ -2,10 +2,14 @@
 import RideshareMapStage from './MapStage.vue'
 
 defineProps<{
+  activeService: import('../../types/rideshare').AppService
   activePanel: 'ride' | 'menu' | 'preferences' | 'safety' | 'perks' | 'profile' | 'my-rides' | 'places' | 'payments'
   step: 'home' | 'rides' | 'confirming' | 'tracking'
   destinationTitle?: string
   trackingProgress: number
+  headerLabel?: string
+  headerRight?: 'avatar' | 'heart' | 'close'
+  headerForceBack?: boolean
 }>()
 
 defineEmits<{
@@ -24,8 +28,12 @@ defineEmits<{
       <section class="phone-lane">
         <div class="phone-frame">
           <RideshareMapStage
+            :active-service="activeService"
             :active-panel="activePanel"
             :destination-title="destinationTitle"
+            :header-label="headerLabel"
+            :header-right="headerRight"
+            :header-force-back="headerForceBack"
             :step="step"
             :tracking-progress="trackingProgress"
             @back="$emit('back')"

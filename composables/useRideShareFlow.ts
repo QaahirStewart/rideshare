@@ -2,25 +2,42 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import {
   defaultRidePreferences,
   defaultSafetyToolkit,
+  deliveryServices,
   destinationSuggestions,
   driverProfile,
+  eatsCategories,
+  eatsMenus,
+  eatsRestaurants,
+  martCategories,
+  martFeaturedStores,
   paymentMethods,
   perksSnapshot,
   rideCatalog,
   riderProfile,
   savedPlaces,
+  sendPackageTypes,
   trackingCheckpoints,
+  trendingRestaurants,
+  recentFoodOrders,
   tripHistory,
 } from '../data/rideshare'
 import type {
   ActivePanel,
+  AppService,
+  CartItem,
+  DeliveryServiceOption,
   DestinationSuggestion,
+  EatsCategory,
   FlowStep,
+  MartCategory,
+  MartStore,
+  MenuItem,
   PerksSnapshot,
   RidePreferences,
   RideQuote,
   SafetyToolkit,
   SavedPlace,
+  SendPackageType,
   TrackingCheckpoint,
 } from '../types/rideshare'
 
@@ -59,9 +76,14 @@ function createSuggestionFromSavedPlace(place: SavedPlace): DestinationSuggestio
   }
 }
 
+const menuItemIndex = new Map(
+  Object.values(eatsMenus).flat().map((menuItem) => [menuItem.id, menuItem]),
+)
+
 export function useRideShareFlow() {
   const step = useState<FlowStep>('rideshare-step', () => 'home')
   const activePanel = useState<ActivePanel>('rideshare-panel', () => 'ride')
+  const activeService = useState<AppService>('rideshare-service', () => 'ride')
   const destinationQuery = useState('rideshare-query', () => '')
   const selectedDestination = useState<DestinationSuggestion | null>('rideshare-destination', () => null)
   const selectedRideId = useState('rideshare-ride', () => rideCatalog[0].id)
@@ -75,6 +97,34 @@ export function useRideShareFlow() {
   const perksState = useState<PerksSnapshot>('rideshare-perks', () => ({ ...perksSnapshot }))
   const savedPlacesState = useState<SavedPlace[]>('rideshare-saved-places', () =>
     savedPlaces.map((place) => ({ ...place })),
+  )
+
+  // ── Eats sub-flow ──
+  const eatsStep = useState<'home' | 'restaurant' | 'order'>('rideshare-eats-step', () => 'home')
+  const selectedRestaurantId = useState<string | null>('rideshare-restaurant-id', () => null)
+  const cartItems = useState<CartItem[]>('rideshare-cart', () => [])
+
+  const selectedRestaurant = computed(() =>
+    eatsRestaurants.find((restaurant) => restaurant.id === selectedRestaurantId.value) ?? null,
+  )
+
+  const eatsMenuItems = computed<MenuItem[]>(() => {
+    if (!selectedRestaurantId.value) {
+      return []
+    }
+
+    return eatsMenus[selectedRestaurantId.value] ?? []
+  })
+
+  const cartTotal = computed(() =>
+    cartItems.value.reduce((total, item) => {
+      const menuItem = menuItemIndex.get(item.menuItemId)
+      return total + (menuItem?.price ?? 0) * item.quantity
+    }, 0),
+  )
+
+  const cartCount = computed(() =>
+    cartItems.value.reduce((total, item) => total + item.quantity, 0),
   )
 
   const selectedPaymentMethod = computed(() =>
@@ -156,6 +206,7 @@ export function useRideShareFlow() {
   }
 
   function chooseSuggestion(suggestion: DestinationSuggestion) {
+    activeService.value = 'ride'
     selectedDestination.value = suggestion
     destinationQuery.value = suggestion.title
     activePanel.value = 'ride'
@@ -259,6 +310,74 @@ export function useRideShareFlow() {
 
   function openProfile() {
     activePanel.value = 'profile'
+  }
+
+  function switchService(service: AppService) {
+    if (activeService.value === service) {
+      return
+    }
+
+    activeService.value = service
+    activePanel.value = 'ride'
+
+    if (service !== 'ride') {
+      clearTimers()
+      step.value = 'home'
+      trackingProgress.value = 0
+    }
+
+    // Reset eats sub-flow
+    eatsStep.value = 'home'
+    selectedRestaurantId.value = null
+    cartItems.value = []
+  }
+
+  function openRestaurant(restaurantId: string) {
+    if (selectedRestaurantId.value && selectedRestaurantId.value !== restaurantId) {
+      cartItems.value = []
+    }
+
+    selectedRestaurantId.value = restaurantId
+    eatsStep.value = 'restaurant'
+  }
+
+  function addToCart(menuItemId: string) {
+    const existing = cartItems.value.find((item) => item.menuItemId === menuItemId)
+    if (existing) {
+      cartItems.value = cartItems.value.map((item) =>
+        item.menuItemId === menuItemId ? { ...item, quantity: item.quantity + 1 } : item,
+      )
+    } else {
+      cartItems.value = [...cartItems.value, { menuItemId, quantity: 1 }]
+    }
+  }
+
+  function removeFromCart(menuItemId: string) {
+    cartItems.value = cartItems.value.filter((item) => item.menuItemId !== menuItemId)
+  }
+
+  function updateCartQuantity(menuItemId: string, quantity: number) {
+    if (quantity <= 0) {
+      removeFromCart(menuItemId)
+      return
+    }
+    cartItems.value = cartItems.value.map((item) =>
+      item.menuItemId === menuItemId ? { ...item, quantity } : item,
+    )
+  }
+
+  function openEatsOrder() {
+    eatsStep.value = 'order'
+  }
+
+  function closeEatsSubpanel() {
+    if (eatsStep.value === 'order') {
+      eatsStep.value = 'restaurant'
+    } else {
+      eatsStep.value = 'home'
+      selectedRestaurantId.value = null
+      cartItems.value = []
+    }
   }
 
   function openMenu() {
@@ -376,6 +495,7 @@ export function useRideShareFlow() {
 
     try {
       const parsed = JSON.parse(raw) as {
+        activeService?: AppService
         destinationId?: string
         paymentId?: string
         paymentMethods?: typeof paymentMethods
@@ -394,6 +514,10 @@ export function useRideShareFlow() {
           selectedDestination.value = restoredDestination
           destinationQuery.value = restoredDestination.title
         }
+      }
+
+      if (parsed.activeService) {
+        activeService.value = parsed.activeService
       }
 
       if (Array.isArray(parsed.paymentMethods) && parsed.paymentMethods.length) {
@@ -437,7 +561,7 @@ export function useRideShareFlow() {
     }
   })
 
-  watch([selectedDestination, selectedPaymentId, paymentMethodsState, ridePreferences, safetyToolkit, perksState, savedPlacesState], () => {
+  watch([activeService, selectedDestination, selectedPaymentId, paymentMethodsState, ridePreferences, safetyToolkit, perksState, savedPlacesState], () => {
     if (!process.client) {
       return
     }
@@ -445,6 +569,7 @@ export function useRideShareFlow() {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        activeService: activeService.value,
         destinationId: selectedDestination.value?.id,
         paymentId: selectedPaymentId.value,
         paymentMethods: paymentMethodsState.value,
@@ -461,11 +586,21 @@ export function useRideShareFlow() {
   })
 
   return {
+    activeService,
     activePanel,
+    cartCount,
+    cartItems,
+    cartTotal,
     currentCheckpoint,
+    deliveryServices: deliveryServices as DeliveryServiceOption[],
     destinationQuery,
     driverProfile,
+    eatsCategories: eatsCategories as EatsCategory[],
+    eatsMenuItems,
+    eatsStep,
     filteredSuggestions,
+    martCategories: martCategories as MartCategory[],
+    martFeaturedStores: martFeaturedStores as MartStore[],
     paymentMethods: paymentMethodsState,
     perks: perksState,
     quickSummary,
@@ -477,36 +612,47 @@ export function useRideShareFlow() {
     selectedDestination,
     selectedPaymentId,
     selectedPaymentMethod,
+    selectedRestaurant,
     selectedRide,
     selectedRideId,
+    sendPackageTypes: sendPackageTypes as SendPackageType[],
     step,
     trackingProgress,
+    trendingRestaurants,
+    recentFoodOrders,
     tripHistory,
     safetyToolkit,
     chooseSavedPlace,
     chooseSuggestion,
     activateCommutePack,
     addSavedPlace,
+    addToCart,
     closePlaces,
+    closeEatsSubpanel,
     closeMenu,
     closeMenuSubpanel,
     closeSubpanel,
     closeProfile,
     confirmRide,
     openAddPlaces,
+    openEatsOrder,
     openMenu,
     openPerks,
     openPayments,
     openPreferences,
     openProfile,
+    openRestaurant,
     openSafetyToolkit,
     openMyRides,
     proceedToRideOptions,
+    removeFromCart,
     resetTrip,
     savePaymentMethod,
     selectPaymentMethod,
     selectRide,
     setDestinationQuery,
+    switchService,
+    updateCartQuantity,
     updateRidePreferences,
     updateSafetyToolkit,
   }
